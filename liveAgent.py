@@ -40,14 +40,24 @@ class ArbitrageBot:
                             await self.calculate_difference()
 
     async def subscribe_bitmex(self):
-        ws = BitMEXWebsocket(endpoint=self.BITMEX_WS_URL, symbol=self.BITMEX_SYMBOL, api_key=None, api_secret=None)
         while True:
-            recent_trades = ws.recent_trades()
-            if recent_trades and self.bitmex_price != recent_trades[-1]["price"]:
-                self.bitmex_price = recent_trades[-1]["price"]
-                print(f"BitMEX Price: {self.bitmex_price}")
-                await self.calculate_difference()
-            await asyncio.sleep(1)
+            try:
+                print("Connecting to BitMEX WebSocket...")
+                ws = BitMEXWebsocket(endpoint=self.BITMEX_WS_URL, symbol=self.BITMEX_SYMBOL, api_key=None, api_secret=None)
+                
+                while ws.ws.sock and ws.ws.sock.connected:
+                    recent_trades = ws.recent_trades()
+                    if recent_trades and self.bitmex_price != recent_trades[-1]["price"]:
+                        self.bitmex_price = recent_trades[-1]["price"]
+                        print(f"BitMEX Price: {self.bitmex_price}")
+                        await self.calculate_difference()
+                    await asyncio.sleep(1)
+            
+            except Exception as e:
+                print(f"BitMEX WebSocket connection lost: {e}")
+                print("Reconnecting in 3 seconds...")
+                await asyncio.sleep(3)  # Wait before retrying
+
 
     async def calculate_difference(self):
         if self.btse_price is not None and self.bitmex_price is not None:
