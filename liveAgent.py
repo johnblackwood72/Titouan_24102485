@@ -98,23 +98,29 @@ class ArbitrageBot:
     def close_position(self, diff, ma100, trade_info):
         new_short_price = self.btse_price if trade_info["short_exchange"] == "BTSE" else self.bitmex_price
         new_long_price = self.bitmex_price if trade_info["long_exchange"] == "BitMEX" else self.btse_price
-        pnl_short = trade_info["contracts_short"] * (trade_info["short_price"] - new_short_price)
-        pnl_long = trade_info["contracts_long"] * (new_long_price - trade_info["long_price"])
+
+        # Correct PnL formulas
+        pnl_short = (self.TRADE_SIZE_USDT / trade_info["short_price"]) * (trade_info["short_price"] - new_short_price)
+        pnl_long = (self.TRADE_SIZE_USDT / trade_info["long_price"]) * (new_long_price - trade_info["long_price"])
+        
         total_pnl = pnl_short + pnl_long
 
+        # Update prices in trade info
         trade_info["short_price"] = new_short_price
         trade_info["long_price"] = new_long_price
-        
+
+        # Correct fee-adjusted balance update
         if trade_info["short_exchange"] == "BTSE":
-            self.btse_balance += self.TRADE_SIZE_USDT * (1 - self.TRADING_FEE) + pnl_short
-            self.bitmex_balance += self.TRADE_SIZE_USDT * (1 - self.TRADING_FEE) + pnl_long
+            self.btse_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE) + pnl_short
+            self.bitmex_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE) + pnl_long
         else:
-            self.bitmex_balance += self.TRADE_SIZE_USDT * (1 - self.TRADING_FEE) + pnl_short
-            self.btse_balance += self.TRADE_SIZE_USDT * (1 - self.TRADING_FEE) + pnl_long
+            self.bitmex_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE) + pnl_short
+            self.btse_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE) + pnl_long
 
         self.position_open = False
         print(f"✅ CLOSING POSITION: Short {trade_info['short_exchange']}, Long {trade_info['long_exchange']}")
         self.log_trade("CLOSE", trade_info, total_pnl)
+
 
     def log_trade(self, action, trade_info, pnl=0):
         total_balance = self.btse_balance + self.bitmex_balance + pnl
