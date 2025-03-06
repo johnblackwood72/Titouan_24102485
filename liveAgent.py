@@ -12,8 +12,8 @@ class ArbitrageBot:
     BITMEX_SYMBOL = 'XBTH25'
     INITIAL_CAPITAL = 10000  # USDT
     TRADE_SIZE_USDT = 1000  # USDT per trade
-    OPENING_THRESHOLD = 2
-    CLOSING_THRESHOLD = 0.5
+    OPENING_THRESHOLD = 0.5
+    CLOSING_THRESHOLD = 0.1
     TRADING_FEE = 0.0005  # 0.05% fee per trade
 
     def __init__(self):
@@ -26,18 +26,46 @@ class ArbitrageBot:
         self.open_trade_info = None
 
     async def subscribe_btse(self):
-        async with websockets.connect(self.BTSE_WS_URL) as ws:
-            subscribe_msg = {"op": "subscribe", "args": [f"tradeHistoryApiV2:{self.BTSE_SYMBOL}"]}
-            await ws.send(json.dumps(subscribe_msg))
-            while True:
-                response = await ws.recv()
-                data = json.loads(response)
-                if "data" in data and isinstance(data["data"], list):
-                    for trade in data["data"]:
-                        if "price" in trade:
-                            self.btse_price = trade["price"]
-                            print(f"BTSE Price: {self.btse_price}")
-                            await self.calculate_difference()
+        url = self.BTSE_WS_URL
+
+        while True:  # Infinite loop for automatic reconnection
+            try:
+                async with websockets.connect(url) as ws:
+                    subscribe_msg = {
+                        "op": "subscribe",
+                        "args": [f"tradeHistoryApiV2:{self.BTSE_SYMBOL}"]
+                    }
+                    await ws.send(json.dumps(subscribe_msg))
+
+                    # Background task to send ping messages
+                    async def keep_alive():
+                        while True:
+                            try:
+                                await ws.ping()
+                                await asyncio.sleep(30)  # Adjust ping interval if needed
+                            except:
+                                break  # Stop keep-alive task on failure
+
+                    asyncio.create_task(keep_alive())
+
+                    while True:
+                        response = await ws.recv()
+                        data = json.loads(response)
+                        
+                        if "data" in data and isinstance(data["data"], list):
+                            for trade in data["data"]:
+                                if "price" in trade:
+                                    self.btse_price = trade["price"]
+                                    print(f"BTSE Price: {self.btse_price}")
+                                    await self.calculate_difference()
+
+            except websockets.exceptions.ConnectionClosedError as e:
+                print(f"BTSE WebSocket connection lost: {e}. Reconnecting in 5 seconds...")
+                await asyncio.sleep(5)
+
+            except Exception as e:
+                print(f"Unexpected error in BTSE WebSocket: {e}. Reconnecting in 5 seconds...")
+                await asyncio.sleep(5)
 
     async def subscribe_bitmex(self):
         while True:
@@ -61,18 +89,17 @@ class ArbitrageBot:
 
     async def calculate_difference(self):
         if self.btse_price is not None and self.bitmex_price is not None:
-            diff = abs(self.btse_price - self.bitmex_price)
-            self.price_diffs.append(diff)
-            df = pd.DataFrame(list(self.price_diffs), columns=["Price Difference"])
-            ma100 = df["Price Difference"].rolling(window=100).mean().iloc[-1]
-            print(f"Price Difference: {diff:.2f}, Moving Average (100): {ma100:.2f}")
+            higher_price = max(self.btse_price, self.bitmex_price)
+            lower_price = min(self.btse_price, self.bitmex_price)
+            spread_p = 100 * ((higher_price - lower_price) / lower_price)
+            print(f"Spread %: {spread_p:.4f}")
             
-            if not self.position_open and diff > self.OPENING_THRESHOLD * ma100:
-                self.open_trade_info = self.open_position(diff, ma100)
-            if self.position_open and diff < self.CLOSING_THRESHOLD * ma100:
-                self.close_position(diff, ma100, self.open_trade_info)
+            if not self.position_open and spread_p > self.OPENING_THRESHOLD:
+                self.open_trade_info = self.open_position(spread_p)
+            if self.position_open and spread_p < self.CLOSING_THRESHOLD:
+                self.close_position(spread_p, self.open_trade_info)
 
-    def open_position(self, diff, ma100):
+    def open_position(self, diff):
         if self.btse_price > self.bitmex_price:
             short_exchange, long_exchange = "BTSE", "BitMEX"
             short_price, long_price = self.btse_price, self.bitmex_price
@@ -105,7 +132,7 @@ class ArbitrageBot:
         self.log_trade("OPEN", trade_info)
         return trade_info
 
-    def close_position(self, diff, ma100, trade_info):
+    def close_position(self, diff, trade_info):
         new_short_price = self.btse_price if trade_info["short_exchange"] == "BTSE" else self.bitmex_price
         new_long_price = self.bitmex_price if trade_info["long_exchange"] == "BitMEX" else self.btse_price
 
