@@ -111,12 +111,12 @@ class ArbitrageBot:
         contracts_short = self.TRADE_SIZE_USDT / short_price
         contracts_long = self.TRADE_SIZE_USDT / long_price
 
-        if short_exchange == "BTSE":
-            self.btse_balance -= self.TRADE_SIZE_USDT * (1 + self.TRADING_FEE)
-            self.bitmex_balance -= self.TRADE_SIZE_USDT * (1 + self.TRADING_FEE)
-        else:
-            self.bitmex_balance -= self.TRADE_SIZE_USDT * (1 + self.TRADING_FEE)
-            self.btse_balance -= self.TRADE_SIZE_USDT * (1 + self.TRADING_FEE)
+        # if short_exchange == "BTSE":
+        #     self.btse_balance -= self.TRADE_SIZE_USDT * (1 + self.TRADING_FEE)
+        #     self.bitmex_balance -= self.TRADE_SIZE_USDT * (1 + self.TRADING_FEE)
+        # else:
+        #     self.bitmex_balance -= self.TRADE_SIZE_USDT * (1 + self.TRADING_FEE)
+        #     self.btse_balance -= self.TRADE_SIZE_USDT * (1 + self.TRADING_FEE)
 
         self.position_open = True
         print(f"🚀 OPENING POSITION: Short {short_exchange}, Long {long_exchange}")
@@ -138,9 +138,15 @@ class ArbitrageBot:
         new_long_price = self.bitmex_price if trade_info["long_exchange"] == "BitMEX" else self.btse_price
 
         # Correct PnL formulas
-        pnl_short = (self.TRADE_SIZE_USDT / trade_info["short_price"]) * (trade_info["short_price"] - new_short_price)
-        pnl_long = (self.TRADE_SIZE_USDT / trade_info["long_price"]) * (new_long_price - trade_info["long_price"])
-        
+        # trade_size1 * (entry_1 - exit_1) - total_fee
+        # fee1 = (transaction_cost * trade_size1 * entry_1) + (transaction_cost * trade_size1 * exit_1)
+        # fee2 = (transaction_cost * trade_size2 * entry_2) + (transaction_cost * trade_size2 * exit_2)
+        # total_fee = fee1 + fee2
+        fee_short = (self.TRADING_FEE * trade_info["contracts_short"] * trade_info["short_price"]) + (self.TRADING_FEE * trade_info["contracts_short"] * new_short_price)
+        fee_long = (self.TRADING_FEE * trade_info["contracts_long"] * trade_info["long_price"]) + (self.TRADING_FEE * trade_info["contracts_long"] * new_long_price)
+        self.fee = fee_short + fee_long
+        pnl_short = trade_info["contracts_short"] * (trade_info["short_price"] - new_short_price) - fee_short
+        pnl_long = trade_info["contracts_long"] * (new_long_price - trade_info["long_price"]) - fee_long
         total_pnl = pnl_short + pnl_long
 
         # Update prices in trade info
@@ -148,12 +154,12 @@ class ArbitrageBot:
         trade_info["long_price"] = new_long_price
 
         # Correct fee-adjusted balance update
-        if trade_info["short_exchange"] == "BTSE":
-            self.btse_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE)
-            self.bitmex_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE)
-        else:
-            self.bitmex_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE)
-            self.btse_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE)
+        # if trade_info["short_exchange"] == "BTSE":
+        #     self.btse_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE)
+        #     self.bitmex_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE)
+        # else:
+        #     self.bitmex_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE)
+        #     self.btse_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE)
 
         self.position_open = False
         print(f"✅ CLOSING POSITION: Short {trade_info['short_exchange']}, Long {trade_info['long_exchange']}")
@@ -161,7 +167,7 @@ class ArbitrageBot:
 
 
     def log_trade(self, action, trade_info, pnl=0):
-        total_balance = self.btse_balance + self.bitmex_balance
+        total_balance = self.btse_balance + self.bitmex_balance + pnl
         log_data = {
             "Action": action,
             "Short Exchange": trade_info.get("short_exchange", ""),
@@ -171,6 +177,7 @@ class ArbitrageBot:
             "Short Price": trade_info.get("short_price", 0),
             "Long Price": trade_info.get("long_price", 0),
             "PnL": pnl,
+            "Total Fee": self.fee,
             "BTSE Balance": self.btse_balance,
             "BitMEX Balance": self.bitmex_balance,
             "Total Balance": total_balance
