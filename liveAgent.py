@@ -24,6 +24,7 @@ class ArbitrageBot:
         self.price_diffs = deque(maxlen=100)
         self.position_open = False
         self.open_trade_info = None
+        self.fee = None
 
     async def subscribe_btse(self):
         url = self.BTSE_WS_URL
@@ -160,7 +161,7 @@ class ArbitrageBot:
 
 
     def log_trade(self, action, trade_info, pnl=0):
-        total_balance = self.btse_balance + self.bitmex_balance + pnl
+        total_balance = self.btse_balance + self.bitmex_balance
         log_data = {
             "Action": action,
             "Short Exchange": trade_info.get("short_exchange", ""),
