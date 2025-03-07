@@ -149,11 +149,11 @@ class ArbitrageBot:
 
         # Correct fee-adjusted balance update
         if trade_info["short_exchange"] == "BTSE":
-            self.btse_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE) + pnl_short
-            self.bitmex_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE) + pnl_long
+            self.btse_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE)
+            self.bitmex_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE)
         else:
-            self.bitmex_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE) + pnl_short
-            self.btse_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE) + pnl_long
+            self.bitmex_balance += (trade_info["contracts_short"] * new_short_price) * (1 - self.TRADING_FEE)
+            self.btse_balance += (trade_info["contracts_long"] * new_long_price) * (1 - self.TRADING_FEE)
 
         self.position_open = False
         print(f"✅ CLOSING POSITION: Short {trade_info['short_exchange']}, Long {trade_info['long_exchange']}")
