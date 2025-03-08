@@ -2,10 +2,8 @@ import asyncio
 import websockets
 import json
 import pandas as pd
-import threading
 from collections import deque
 from bitmex_websocket import BitMEXWebsocket
-from pynput import keyboard
 
 class ArbitrageBot:
     BTSE_WS_URL = "wss://ws.btse.com/ws/futures"
@@ -31,7 +29,6 @@ class ArbitrageBot:
         self.close_fee_short = None
         self.close_fee_long = None
         self.fee = None
-        threading.Thread(target=self.keyboard_listener, daemon=True).start()
         
     async def subscribe_btse(self):
         url = self.BTSE_WS_URL
@@ -192,27 +189,7 @@ class ArbitrageBot:
         df = pd.DataFrame([log_data])
         df.to_csv("trading_log.csv", mode="a", header=not pd.io.common.file_exists("trading_log.csv"), index=False)
         
-    def keyboard_listener(self):
-        def on_press(key):
-            try:
-                if key.char == 'o':
-                    print("\n[Manual Override] Opening Position")
-                    if not self.position_open:
-                        self.open_trade_info = self.open_position(0)  # Dummy value for diff
-                    else:
-                        print("Position already open!")
-                elif key.char == 'c':
-                    print("\n[Manual Override] Closing Position")
-                    if self.position_open:
-                        self.close_position(0, self.open_trade_info)  # Dummy value for diff
-                    else:
-                        print("No open position to close!")
-            except AttributeError:
-                pass
 
-        listener = keyboard.Listener(on_press=on_press)
-        listener.start()
-        listener.join()
     async def run(self):
         await asyncio.gather(self.subscribe_btse(), self.subscribe_bitmex())
 
