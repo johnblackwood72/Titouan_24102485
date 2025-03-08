@@ -145,8 +145,8 @@ class ArbitrageBot:
         fee_short = (self.TRADING_FEE * trade_info["contracts_short"] * trade_info["short_price"]) + (self.TRADING_FEE * trade_info["contracts_short"] * new_short_price)
         fee_long = (self.TRADING_FEE * trade_info["contracts_long"] * trade_info["long_price"]) + (self.TRADING_FEE * trade_info["contracts_long"] * new_long_price)
         self.fee = fee_short + fee_long
-        pnl_short = trade_info["contracts_short"] * (trade_info["short_price"] - new_short_price) - fee_short
-        pnl_long = trade_info["contracts_long"] * (new_long_price - trade_info["long_price"]) - fee_long
+        pnl_short = trade_info["contracts_short"] * (trade_info["short_price"] - new_short_price) #- fee_short
+        pnl_long = trade_info["contracts_long"] * (new_long_price - trade_info["long_price"]) #- fee_long
         total_pnl = pnl_short + pnl_long
 
         # Update prices in trade info
@@ -167,7 +167,7 @@ class ArbitrageBot:
 
 
     def log_trade(self, action, trade_info, pnl=0):
-        total_balance = self.btse_balance + self.bitmex_balance + pnl
+        total_balance = self.btse_balance + self.bitmex_balance + pnl - self.fee
         log_data = {
             "Action": action,
             "Short Exchange": trade_info.get("short_exchange", ""),
