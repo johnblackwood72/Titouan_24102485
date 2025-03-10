@@ -226,15 +226,15 @@ class ArbitrageBot:
         # Compute and print WAP difference if both exchanges have values
         try:
             if self.bitmex_wap_buy and self.btse_wap_sell:
-                low_price = self.bitmex_wap_buy
-                high_price = self.btse_wap_sell
-                self.wap_difference_buy_sell = ((high_price - low_price) / min(self.bitmex_wap_buy, self.btse_wap_sell)) * 100
+                low_price = min(self.bitmex_wap_buy, self.btse_wap_sell)
+                high_price = max(self.bitmex_wap_buy, self.btse_wap_sell)
+                self.wap_difference_buy_sell = ((high_price - low_price) / low_price) * 100
                 print(f"WAP Difference between buy BitMEX & sell BTSE: {self.wap_difference_buy_sell:.4f}%")
                 
             if self.bitmex_wap_sell and self.btse_wap_buy:
-                low_price = self.btse_wap_buy
-                high_price = self.bitmex_wap_sell
-                self.wap_difference_sell_buy = ((high_price - low_price) / min(self.btse_wap_buy, self.bitmex_wap_sell)) * 100
+                low_price = min(self.btse_wap_buy, self.bitmex_wap_sell)
+                high_price = max(self.btse_wap_buy, self.bitmex_wap_sell)
+                self.wap_difference_sell_buy = ((high_price - low_price) / low_price) * 100
                 print(f"WAP Difference between sell BitMEX & buy BTSE: {self.wap_difference_sell_buy:.4f}%")
             
             if not self.is_long_short_position_open and self.wap_difference_buy_sell > self.OPENING_THRESHOLD:
