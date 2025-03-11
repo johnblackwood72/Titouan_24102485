@@ -17,10 +17,9 @@ class ArbitrageBot:
     CLOSING_THRESHOLD = 0.1
     TRADING_FEE = 0.0005  # 0.05% fee per trade
     
-    def __init__(self, bitmex_symbol=BITMEX_SYMBOL):
+    def __init__(self):
         # BitMEX WebSocket setup
-        self.bitmex_symbol = bitmex_symbol
-        self.bitmex_ws = BitMEXWebsocket(endpoint="wss://ws.bitmex.com/realtime", symbol=bitmex_symbol)
+        # self.bitmex_ws = BitMEXWebsocket(endpoint=self.BITMEX_WS_URL, symbol=self.BTSE_SYMBOL)
         self.bitmex_last_trade_price = None
         self.bitmex_order_book = None
         self.bitmex_wap = None  # Store WAP for comparison
@@ -44,13 +43,25 @@ class ArbitrageBot:
         self.close_fee_long = None
         self.fee = None
         
-    async def fetch_bitmex_order_book(self):
-        self.bitmex_order_book = self.bitmex_ws.market_depth()
+    async def fetch_bitmex_order_book(self):        
+        """Fetches the latest order book snapshot."""
+        async with websockets.connect(self.BITMEX_WS_URL) as ws:
+            subscribe_msg = {
+                "op": "subscribe",
+                "args": [f"orderBook10:{self.BITMEX_SYMBOL}"]
+            }
+            await ws.send(json.dumps(subscribe_msg))
+
+            while True:
+                response = await ws.recv()
+                data = json.loads(response)
+                if "data" in data and isinstance(data["data"], list):
+                    self.bitmex_order_book = data["data"][0]  # Take the latest snapshot
+                    return  
         
     async def fetch_bitmex_last_trade_price(self):
         """Subscribe to BitMEX trade history and update last traded price."""
         url = self.BITMEX_WS_URL
-
         while True:  # Infinite loop for automatic reconnection
             async with websockets.connect(url) as ws:
                 subscribe_msg = {
@@ -154,14 +165,9 @@ class ArbitrageBot:
             print(f"{exchange.upper()} order book or last trade price unavailable.")
             return None, None
 
-        if exchange == "bitmex":
-            order_book_side = [entry for entry in order_book if entry["side"] == ("Sell" if order_type == "buy" else "Buy")]
-            order_book_side.sort(key=lambda x: x["price"], reverse=(order_type == "sell"))
-            
-        else:  # BTSE
-            order_book_side = order_book["asks"] if order_type == "buy" else order_book["bids"]
-            order_book_side = [{"price": float(entry[0]), "size": float(entry[1])} for entry in order_book_side]
-            order_book_side.sort(key=lambda x: x["price"], reverse=(order_type == "sell"))
+        order_book_side = order_book["asks"] if order_type == "buy" else order_book["bids"]
+        order_book_side = [{"price": float(entry[0]), "size": float(entry[1])} for entry in order_book_side]
+        order_book_side.sort(key=lambda x: x["price"], reverse=(order_type == "sell"))
 
         if not order_book_side:
             print(f"No liquidity in {exchange.upper()} order book.")
