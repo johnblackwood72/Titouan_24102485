@@ -5,11 +5,6 @@ import pandas as pd
 from collections import deque
 from bitmex_websocket import BitMEXWebsocket
 
-BTSE_WS_URL = "wss://ws.btse.com/ws/futures"
-BTSE_WS_OB_URL = "wss://ws.btse.com/ws/oss/futures"
-BTSE_SYMBOL = "BTC-250328"  # Modify for your trading pair
-
-
 class ArbitrageBot:
     BTSE_WS_URL = "wss://ws.btse.com/ws/futures"
     BTSE_WS_OB_URL = "wss://ws.btse.com/ws/oss/futures"
@@ -90,11 +85,11 @@ class ArbitrageBot:
 
     async def subscribe_btse(self):
         """Connects to BTSE WebSocket for trade updates."""
-        url = BTSE_WS_URL
+        url = self.BTSE_WS_URL
         while True:
             try:
                 async with websockets.connect(url) as ws:
-                    subscribe_msg = {"op": "subscribe", "args": [f"tradeHistoryApiV2:{BTSE_SYMBOL}"]}
+                    subscribe_msg = {"op": "subscribe", "args": [f"tradeHistoryApiV2:{self.BTSE_SYMBOL}"]}
                     await ws.send(json.dumps(subscribe_msg))
 
                     async def keep_alive():
@@ -125,8 +120,8 @@ class ArbitrageBot:
 
     async def fetch_btse_order_book(self):
         """Fetches BTSE order book snapshot."""
-        async with websockets.connect(BTSE_WS_OB_URL) as ws:
-            subscribe_msg = {"op": "subscribe", "args": [f"update:{BTSE_SYMBOL}"]}
+        async with websockets.connect(self.BTSE_WS_OB_URL) as ws:
+            subscribe_msg = {"op": "subscribe", "args": [f"update:{self.BTSE_SYMBOL}"]}
             await ws.send(json.dumps(subscribe_msg))
 
             while True:
@@ -166,6 +161,7 @@ class ArbitrageBot:
         else:  # BTSE
             order_book_side = order_book["asks"] if order_type == "buy" else order_book["bids"]
             order_book_side = [{"price": float(entry[0]), "size": float(entry[1])} for entry in order_book_side]
+            order_book_side.sort(key=lambda x: x["price"], reverse=(order_type == "sell"))
 
         if not order_book_side:
             print(f"No liquidity in {exchange.upper()} order book.")
@@ -177,7 +173,9 @@ class ArbitrageBot:
         for level in order_book_side:
             price = level["price"]
             liquidity = level["size"]
-
+            if exchange == 'btse':
+                liquidity = level["size"] * 0.00001 * price
+            # print('++++++++++++++++++++++++++++',exchange ,liquidity, price)
             if total_executed + liquidity >= order_size:
                 weighted_sum += price * (order_size - total_executed)
                 total_executed = order_size
@@ -244,10 +242,10 @@ class ArbitrageBot:
                 self.open_trade_info = self.open_position(long_exchange='BTSE', short_exchange='BITMEX', long_price=self.btse_wap_buy, short_price=self.bitmex_wap_sell, diff=self.wap_difference_sell_buy)
                 self.is_short_long_position_open = True
 
-            if self.is_long_short_position_open and self.wap_difference_buy_sell < self.CLOSING_THRESHOLD:
+            if self.is_long_short_position_open and self.wap_difference_sell_buy < self.CLOSING_THRESHOLD:
                 self.close_position(new_long_price=self.bitmex_wap_sell, new_short_price=self.btse_wap_buy, trade_info=self.open_trade_info)
                 self.is_long_short_position_open = False
-            elif self.is_short_long_position_open and self.wap_difference_sell_buy < self.CLOSING_THRESHOLD:
+            elif self.is_short_long_position_open and self.wap_difference_buy_sell < self.CLOSING_THRESHOLD:
                 self.close_position(new_long_price=self.btse_wap_sell, new_short_price=self.bitmex_wap_buy, trade_info=self.open_trade_info)
                 self.is_short_long_position_open = False
                 
