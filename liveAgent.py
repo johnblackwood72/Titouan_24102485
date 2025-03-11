@@ -9,8 +9,8 @@ class ArbitrageBot:
     BTSE_WS_URL = "wss://ws.btse.com/ws/futures"
     BTSE_WS_OB_URL = "wss://ws.btse.com/ws/oss/futures"
     BITMEX_WS_URL = "wss://ws.bitmex.com/realtime"
-    BTSE_SYMBOL = 'BTC-250328'
-    BITMEX_SYMBOL = 'XBTH25'
+    BTSE_SYMBOL = 'BTC-250627'
+    BITMEX_SYMBOL = 'XBTM25'
     INITIAL_CAPITAL = 10000  # USDT
     TRADE_SIZE_USDT = 1000  # USDT per trade
     OPENING_THRESHOLD = 0.3
@@ -45,52 +45,66 @@ class ArbitrageBot:
         
     async def fetch_bitmex_order_book(self):        
         """Fetches the latest order book snapshot."""
-        async with websockets.connect(self.BITMEX_WS_URL) as ws:
-            subscribe_msg = {
-                "op": "subscribe",
-                "args": [f"orderBook10:{self.BITMEX_SYMBOL}"]
-            }
-            await ws.send(json.dumps(subscribe_msg))
-
-            while True:
-                response = await ws.recv()
-                data = json.loads(response)
-                if "data" in data and isinstance(data["data"], list):
-                    self.bitmex_order_book = data["data"][0]  # Take the latest snapshot
-                    return  
-        
-    async def fetch_bitmex_last_trade_price(self):
-        """Subscribe to BitMEX trade history and update last traded price."""
-        url = self.BITMEX_WS_URL
-        while True:  # Infinite loop for automatic reconnection
-            async with websockets.connect(url) as ws:
+        try:
+            async with websockets.connect(self.BITMEX_WS_URL) as ws:
                 subscribe_msg = {
                     "op": "subscribe",
-                    "args": [f"trade:{self.BITMEX_SYMBOL}"]
+                    "args": [f"orderBook10:{self.BITMEX_SYMBOL}"]
                 }
                 await ws.send(json.dumps(subscribe_msg))
-
-                # Keep WebSocket alive
-                async def keep_alive():
-                    while True:
-                        try:
-                            await ws.ping()
-                            await asyncio.sleep(30)
-                        except:
-                            break  
-
-                asyncio.create_task(keep_alive())
 
                 while True:
                     response = await ws.recv()
                     data = json.loads(response)
-                    
                     if "data" in data and isinstance(data["data"], list):
-                        for trade in data["data"]:
-                            if "price" in trade:
-                                self.bitmex_last_trade_price = float(trade["price"])
-                                print(f"BitMEX Last Traded Price: {self.bitmex_last_trade_price}")
-                                return
+                        self.bitmex_order_book = data["data"][0]  # Take the latest snapshot
+                        return  
+        except (websockets.exceptions.ConnectionClosedError, asyncio.TimeoutError) as e:
+            print(f"BitMEX WebSocket error: {e}. Retrying in 5 seconds...")
+            await asyncio.sleep(5)  # Wait before retrying
+        except Exception as e:
+            print(f"Unexpected error: {e}. Retrying in 5 seconds...")
+            await asyncio.sleep(5)
+        
+    async def fetch_bitmex_last_trade_price(self):
+        """Subscribe to BitMEX trade history and update last traded price."""
+        url = self.BITMEX_WS_URL
+        try:
+            while True:  # Infinite loop for automatic reconnection
+                async with websockets.connect(url) as ws:
+                    subscribe_msg = {
+                        "op": "subscribe",
+                        "args": [f"trade:{self.BITMEX_SYMBOL}"]
+                    }
+                    await ws.send(json.dumps(subscribe_msg))
+
+                    # Keep WebSocket alive
+                    async def keep_alive():
+                        while True:
+                            try:
+                                await ws.ping()
+                                await asyncio.sleep(30)
+                            except:
+                                break  
+
+                    asyncio.create_task(keep_alive())
+
+                    while True:
+                        response = await ws.recv()
+                        data = json.loads(response)
+                        
+                        if "data" in data and isinstance(data["data"], list):
+                            for trade in data["data"]:
+                                if "price" in trade:
+                                    self.bitmex_last_trade_price = float(trade["price"])
+                                    print(f"BitMEX Last Traded Price: {self.bitmex_last_trade_price}")
+                                    return
+        except (websockets.exceptions.ConnectionClosedError, asyncio.TimeoutError) as e:
+            print(f"BitMEX WebSocket error: {e}. Retrying in 5 seconds...")
+            await asyncio.sleep(5)  # Wait before retrying
+        except Exception as e:
+            print(f"Unexpected error: {e}. Retrying in 5 seconds...")
+            await asyncio.sleep(5)
 
 
 
@@ -131,17 +145,24 @@ class ArbitrageBot:
 
     async def fetch_btse_order_book(self):
         """Fetches BTSE order book snapshot."""
-        async with websockets.connect(self.BTSE_WS_OB_URL) as ws:
-            subscribe_msg = {"op": "subscribe", "args": [f"update:{self.BTSE_SYMBOL}"]}
-            await ws.send(json.dumps(subscribe_msg))
+        try:
+            async with websockets.connect(self.BTSE_WS_OB_URL) as ws:
+                subscribe_msg = {"op": "subscribe", "args": [f"update:{self.BTSE_SYMBOL}"]}
+                await ws.send(json.dumps(subscribe_msg))
 
-            while True:
-                response = await ws.recv()
-                data = json.loads(response)
-                if "data" in data:
-                    self.btse_order_book = data["data"]
-                    return  
-
+                while True:
+                    response = await ws.recv()
+                    data = json.loads(response)
+                    if "data" in data:
+                        self.btse_order_book = data["data"]
+                        return  
+        except (websockets.exceptions.ConnectionClosedError, asyncio.TimeoutError) as e:
+            print(f"BTSE WebSocket error: {e}. Retrying in 5 seconds...")
+            await asyncio.sleep(5)  # Wait before retrying
+        except Exception as e:
+            print(f"Unexpected error: {e}. Retrying in 5 seconds...")
+            await asyncio.sleep(5)
+        
     def compute_slippage(self, exchange, order_size, order_type="buy"):
         """
         Computes slippage for BitMEX or BTSE.
@@ -248,10 +269,10 @@ class ArbitrageBot:
                 self.open_trade_info = self.open_position(long_exchange='BTSE', short_exchange='BITMEX', long_price=self.btse_wap_buy, short_price=self.bitmex_wap_sell, diff=self.wap_difference_sell_buy)
                 self.is_short_long_position_open = True
 
-            if self.is_long_short_position_open and self.wap_difference_sell_buy < self.CLOSING_THRESHOLD:
+            if self.is_long_short_position_open and self.wap_difference_sell_buy > self.CLOSING_THRESHOLD:
                 self.close_position(new_long_price=self.bitmex_wap_sell, new_short_price=self.btse_wap_buy, trade_info=self.open_trade_info)
                 self.is_long_short_position_open = False
-            elif self.is_short_long_position_open and self.wap_difference_buy_sell < self.CLOSING_THRESHOLD:
+            elif self.is_short_long_position_open and self.wap_difference_buy_sell > self.CLOSING_THRESHOLD:
                 self.close_position(new_long_price=self.btse_wap_sell, new_short_price=self.bitmex_wap_buy, trade_info=self.open_trade_info)
                 self.is_short_long_position_open = False
                 
