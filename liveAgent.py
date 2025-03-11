@@ -9,8 +9,8 @@ class ArbitrageBot:
     BTSE_WS_URL = "wss://ws.btse.com/ws/futures"
     BTSE_WS_OB_URL = "wss://ws.btse.com/ws/oss/futures"
     BITMEX_WS_URL = "wss://ws.bitmex.com/realtime"
-    BTSE_SYMBOL = 'BTC-250627'
-    BITMEX_SYMBOL = 'XBTM25'
+    BTSE_SYMBOL = 'BTC-250328'
+    BITMEX_SYMBOL = 'XBTH25'
     INITIAL_CAPITAL = 10000  # USDT
     TRADE_SIZE_USDT = 1000  # USDT per trade
     OPENING_THRESHOLD = 0.3
