@@ -9,11 +9,11 @@ class ArbitrageBot:
     BTSE_WS_URL = "wss://ws.btse.com/ws/futures"
     BTSE_WS_OB_URL = "wss://ws.btse.com/ws/oss/futures"
     BITMEX_WS_URL = "wss://ws.bitmex.com/realtime"
-    BTSE_SYMBOL = 'BTC-250328'
-    BITMEX_SYMBOL = 'XBTH25'
+    BTSE_SYMBOL = 'BTC-250627'
+    BITMEX_SYMBOL = 'XBTM25'
     INITIAL_CAPITAL = 10000  # USDT
     TRADE_SIZE_USDT = 1000  # USDT per trade
-    OPENING_THRESHOLD = 0.3
+    OPENING_THRESHOLD = 1
     CLOSING_THRESHOLD = 0.1
     TRADING_FEE = 0.0005  # 0.05% fee per trade
     
@@ -42,7 +42,8 @@ class ArbitrageBot:
         self.close_fee_short = None
         self.close_fee_long = None
         self.fee = None
-        
+        self.position_open = False
+        self.difference = None
     async def fetch_bitmex_order_book(self):        
         """Fetches the latest order book snapshot."""
         try:
@@ -202,7 +203,6 @@ class ArbitrageBot:
             liquidity = level["size"]
             if exchange == 'btse':
                 liquidity = level["size"] * 0.00001 * price
-            # print('++++++++++++++++++++++++++++',exchange ,liquidity, price)
             if total_executed + liquidity >= order_size:
                 weighted_sum += price * (order_size - total_executed)
                 total_executed = order_size
@@ -221,6 +221,7 @@ class ArbitrageBot:
         return wap, slippage
 
     async def calculate_slippage(self, exchange):
+        
         """Fetches order book and computes slippage for the given exchange."""
         if exchange == "bitmex":
             await self.fetch_bitmex_order_book()
@@ -250,31 +251,34 @@ class ArbitrageBot:
             print(f"{exchange.upper()} Estimated Slippage SELL order: {slippage_sell:.8f}%")
         # Compute and print WAP difference if both exchanges have values
         try:
-            if self.bitmex_wap_buy and self.btse_wap_sell:
-                low_price = self.bitmex_wap_buy
-                high_price = self.btse_wap_sell
-                self.wap_difference_buy_sell = ((high_price - low_price) / min(self.bitmex_wap_buy, self.btse_wap_sell)) * 100
-                print(f"WAP Difference between buy BitMEX & sell BTSE: {self.wap_difference_buy_sell:.4f}%")
+            low_price = min(self.bitmex_last_trade_price, self.btse_last_trade_price)
+            high_price = max(self.bitmex_last_trade_price, self.btse_last_trade_price)
+            self.difference = (high_price - low_price) / low_price * 100
+            print('##################', f'{self.difference:.8f}')
+            # if self.bitmex_wap_buy and self.btse_wap_sell:
+            #     low_price = self.bitmex_wap_buy
+            #     high_price = self.btse_wap_sell
+            #     self.wap_difference_buy_sell = ((high_price - low_price) / min(self.bitmex_wap_buy, self.btse_wap_sell)) * 100
+            #     print(f"WAP Difference between buy BitMEX & sell BTSE: {self.wap_difference_buy_sell:.4f}%")
                 
-            if self.bitmex_wap_sell and self.btse_wap_buy:
-                low_price = self.btse_wap_buy
-                high_price = self.bitmex_wap_sell
-                self.wap_difference_sell_buy = ((high_price - low_price) / min(self.btse_wap_buy, self.bitmex_wap_sell)) * 100
-                print(f"WAP Difference between sell BitMEX & buy BTSE: {self.wap_difference_sell_buy:.4f}%")
+            # if self.bitmex_wap_sell and self.btse_wap_buy:
+            #     low_price = self.btse_wap_buy
+            #     high_price = self.bitmex_wap_sell
+            #     self.wap_difference_sell_buy = ((high_price - low_price) / min(self.btse_wap_buy, self.bitmex_wap_sell)) * 100
+            #     print(f"WAP Difference between sell BitMEX & buy BTSE: {self.wap_difference_sell_buy:.4f}%")
             
-            if not self.is_long_short_position_open and self.wap_difference_buy_sell > self.OPENING_THRESHOLD:
-                self.open_trade_info = self.open_position(long_exchange='BITMEX', short_exchange='BTSE', long_price=self.bitmex_wap_buy, short_price=self.btse_wap_sell, diff=self.wap_difference_buy_sell)
-                self.is_long_short_position_open = True
-            elif not self.is_short_long_position_open and self.wap_difference_sell_buy > self.OPENING_THRESHOLD:
-                self.open_trade_info = self.open_position(long_exchange='BTSE', short_exchange='BITMEX', long_price=self.btse_wap_buy, short_price=self.bitmex_wap_sell, diff=self.wap_difference_sell_buy)
-                self.is_short_long_position_open = True
+            if not self.position_open and self.difference > self.OPENING_THRESHOLD:
+                if self.bitmex_last_trade_price < self.btse_last_trade_price:
+                    self.open_trade_info = self.open_position(long_exchange='BITMEX', short_exchange='BTSE', long_price=self.bitmex_wap_buy, short_price=self.btse_wap_sell, diff=self.difference)
+                    self.position_open = True
+                elif self.bitmex_last_trade_price > self.btse_last_trade_price:
+                    self.open_trade_info = self.open_position(long_exchange='BTSE', short_exchange='BITMEX', long_price=self.btse_wap_buy, short_price=self.bitmex_wap_sell, diff=self.difference)
+                    self.position_open = True
 
-            if self.is_long_short_position_open and self.wap_difference_sell_buy > self.CLOSING_THRESHOLD:
+            if self.position_open and self.difference < self.CLOSING_THRESHOLD:
                 self.close_position(new_long_price=self.bitmex_wap_sell, new_short_price=self.btse_wap_buy, trade_info=self.open_trade_info)
-                self.is_long_short_position_open = False
-            elif self.is_short_long_position_open and self.wap_difference_buy_sell > self.CLOSING_THRESHOLD:
-                self.close_position(new_long_price=self.btse_wap_sell, new_short_price=self.bitmex_wap_buy, trade_info=self.open_trade_info)
-                self.is_short_long_position_open = False
+                self.position_open = False
+            
                 
         except Exception as e:
             print(f"Unexpected error: {e}")
