@@ -13,7 +13,7 @@ class ArbitrageBot:
     BITMEX_SYMBOL = 'XBTM25'
     INITIAL_CAPITAL = 10000  # USDT
     TRADE_SIZE_USDT = 1000  # USDT per trade
-    OPENING_THRESHOLD = 1
+    OPENING_THRESHOLD = 0.5
     CLOSING_THRESHOLD = 0.1
     TRADING_FEE = 0.0005  # 0.05% fee per trade
     
